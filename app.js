@@ -155,16 +155,23 @@ function totalsFor(monthKey) {
   const month = state.months[monthKey];
   const contributions = people.reduce((sum, person) => sum + parseAmount(month.contributions[person]), 0);
   const spendByPerson = { Kali: 0, Keith: 0 };
+  const extraByPerson = { Kali: 0, Keith: 0 };
+  let kittyRemaining = contributions;
+
   for (const entry of month.entries) {
-    spendByPerson[entry.paidBy] += Number(entry.amount) || 0;
+    const amount = Number(entry.amount) || 0;
+    spendByPerson[entry.paidBy] += amount;
+
+    if (kittyRemaining >= amount) {
+      kittyRemaining -= amount;
+    } else {
+      extraByPerson[entry.paidBy] += amount - Math.max(0, kittyRemaining);
+      kittyRemaining = 0;
+    }
   }
+
   const shopping = spendByPerson.Kali + spendByPerson.Keith;
-  const totalPaid = {
-    Kali: parseAmount(month.contributions.Kali) + spendByPerson.Kali,
-    Keith: parseAmount(month.contributions.Keith) + spendByPerson.Keith,
-  };
-  const settle = (totalPaid.Kali - totalPaid.Keith) / 2;
-  return { contributions, spendByPerson, shopping, totalPaid, balance: contributions - shopping, settle };
+  return { contributions, spendByPerson, extraByPerson, shopping, balance: contributions - shopping };
 }
 
 function renderMonthOptions() {
@@ -200,13 +207,10 @@ function renderSummary() {
       ? "This is what remains from the start-of-month kitty."
       : "The kitty is gone; this is the extra shopping spend.";
 
-  if (Math.abs(totals.settle) < 0.005) {
-    els.settleUp.textContent = "All square";
-  } else if (totals.settle > 0) {
-    els.settleUp.textContent = `Keith owes Kali ${money(totals.settle)}`;
-  } else {
-    els.settleUp.textContent = `Kali owes Keith ${money(Math.abs(totals.settle))}`;
-  }
+  els.settleUp.textContent =
+    totals.extraByPerson.Kali || totals.extraByPerson.Keith
+      ? `Kali ${money(totals.extraByPerson.Kali)} / Keith ${money(totals.extraByPerson.Keith)}`
+      : "No extra yet";
   updateSyncLabel();
 }
 

@@ -164,13 +164,27 @@ function totalsFor(monthKey) {
 
   const shopping = spendByPerson.Kitty + spendByPerson.Kali + spendByPerson.Keith;
   const extraByPerson = { Kali: spendByPerson.Kali, Keith: spendByPerson.Keith };
+  const overKitty = Math.max(0, spendByPerson.Kitty - contributions) + extraByPerson.Kali + extraByPerson.Keith;
   return {
     contributions,
     spendByPerson,
     extraByPerson,
+    overKitty,
     shopping,
-    balance: contributions - spendByPerson.Kitty,
+    balance: Math.max(0, contributions - spendByPerson.Kitty),
   };
+}
+
+function yearExtraTotals() {
+  return monthStarts.reduce(
+    (totals, [monthKey]) => {
+      const monthTotals = totalsFor(monthKey);
+      totals.Kali += monthTotals.extraByPerson.Kali;
+      totals.Keith += monthTotals.extraByPerson.Keith;
+      return totals;
+    },
+    { Kali: 0, Keith: 0 },
+  );
 }
 
 function renderMonthOptions() {
@@ -192,25 +206,30 @@ function renderInputs() {
 
 function renderSummary() {
   const totals = totalsFor(state.activeMonth);
+  const yearExtras = yearExtraTotals();
+  const yearDifference = yearExtras.Kali - yearExtras.Keith;
   els.totalContributions.textContent = money(totals.contributions);
   els.totalShopping.textContent = money(totals.shopping);
-  els.overKitty.textContent = money(Math.max(0, -totals.balance));
+  els.overKitty.textContent = money(totals.overKitty);
   els.kittyPaid.textContent = money(totals.spendByPerson.Kitty);
   els.kaliPaid.textContent = money(totals.extraByPerson.Kali);
   els.keithPaid.textContent = money(totals.extraByPerson.Keith);
   els.kittyBalance.textContent = money(Math.abs(totals.balance));
-  els.kittyBalance.classList.toggle("negative", totals.balance < 0);
-  els.kittyBalance.classList.toggle("positive", totals.balance >= 0);
-  els.balanceLabel.textContent = totals.balance >= 0 ? "Kitty left" : "Kitty overspent";
+  els.kittyBalance.classList.toggle("negative", false);
+  els.kittyBalance.classList.toggle("positive", true);
+  els.balanceLabel.textContent = "Kitty left";
   els.balanceHelp.textContent =
-    totals.balance >= 0
+    totals.balance > 0
       ? "This is what remains from the start-of-month kitty."
-      : "The kitty has been overspent. Add extra shops under Kali or Keith.";
+      : "The kitty is used up. Add extra shops under Kali or Keith.";
 
-  els.settleUp.textContent =
-    totals.extraByPerson.Kali || totals.extraByPerson.Keith
-      ? `Kali ${money(totals.extraByPerson.Kali)} / Keith ${money(totals.extraByPerson.Keith)}`
-      : "No extra yet";
+  if (Math.abs(yearDifference) < 0.005) {
+    els.settleUp.textContent = "Even";
+  } else if (yearDifference > 0) {
+    els.settleUp.textContent = `Kali +${money(yearDifference)}`;
+  } else {
+    els.settleUp.textContent = `Keith +${money(Math.abs(yearDifference))}`;
+  }
   updateSyncLabel();
 }
 

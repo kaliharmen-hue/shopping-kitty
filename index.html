@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#12635d" />
+    <title>Shopping Kitty</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Kali & Keith</p>
+        <h1>Shopping Kitty</h1>
+      </div>
+      <div class="save-state" id="saveState">Saved</div>
+    </header>
+
+    <main>
+      <section class="summary-band" aria-label="Kitty summary">
+        <div class="summary-primary">
+          <span id="balanceLabel">Kitty left</span>
+          <strong id="kittyBalance">£0.00</strong>
+          <small id="balanceHelp">Add contributions and shopping as you go.</small>
+        </div>
+        <div class="summary-grid">
+          <div>
+            <span>Kitty in</span>
+            <strong id="totalContributions">£0.00</strong>
+          </div>
+          <div>
+            <span>Shopping spent</span>
+            <strong id="totalShopping">£0.00</strong>
+          </div>
+          <div>
+            <span>Over kitty</span>
+            <strong id="overKitty">£0.00</strong>
+          </div>
+          <div>
+            <span>Settle up</span>
+            <strong id="settleUp">All square</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="toolbar" aria-label="Tracker controls">
+        <label>
+          <span>Month</span>
+          <select id="monthSelect"></select>
+        </label>
+        <button class="icon-button" type="button" id="exportBtn" title="Download backup">
+          <span aria-hidden="true">↓</span>
+          <span>Backup</span>
+        </button>
+        <label class="file-button" title="Restore backup">
+          <span aria-hidden="true">↑</span>
+          <span>Restore</span>
+          <input id="importInput" type="file" accept="application/json" />
+        </label>
+      </section>
+
+      <section class="contributions" aria-label="Monthly contributions">
+        <h2>Start of Month Kitty</h2>
+        <div class="money-row">
+          <label>
+            <span>Kali put in</span>
+            <input id="kaliContribution" inputmode="decimal" autocomplete="off" placeholder="0" />
+          </label>
+          <label>
+            <span>Keith put in</span>
+            <input id="keithContribution" inputmode="decimal" autocomplete="off" placeholder="0" />
+          </label>
+        </div>
+      </section>
+
+      <section class="quick-add" aria-label="Add shopping">
+        <h2>Add Shopping</h2>
+        <div class="entry-form">
+          <label>
+            <span>Paid by</span>
+            <select id="paidBy">
+              <option value="Kali">Kali</option>
+              <option value="Keith">Keith</option>
+            </select>
+          </label>
+          <label>
+            <span>Amount</span>
+            <input id="amountInput" inputmode="decimal" autocomplete="off" placeholder="106+52+97" />
+          </label>
+          <label>
+            <span>Note</span>
+            <input id="noteInput" autocomplete="off" placeholder="Aldi, Tesco..." />
+          </label>
+          <button type="button" id="addEntryBtn">Add</button>
+        </div>
+      </section>
+
+      <section class="split-panel" aria-label="Spending split">
+        <div>
+          <span>Kali paid</span>
+          <strong id="kaliPaid">£0.00</strong>
+        </div>
+        <div>
+          <span>Keith paid</span>
+          <strong id="keithPaid">£0.00</strong>
+        </div>
+      </section>
+
+      <section class="entries-section" aria-label="Shopping entries">
+        <div class="section-title">
+          <h2>Shopping Log</h2>
+          <button type="button" id="clearMonthBtn">Clear Month</button>
+        </div>
+        <div id="entriesList" class="entries-list"></div>
+      </section>
+    </main>
+
+    <template id="entryTemplate">
+      <article class="entry">
+        <div>
+          <strong data-field="amount"></strong>
+          <span data-field="meta"></span>
+          <small data-field="note"></small>
+        </div>
+        <button type="button" data-action="delete" title="Delete entry">×</button>
+      </article>
+    </template>
+
+    <script src="firebase-config.js"></script>
+    <script src="app.js" defer></script>
+  </body>
+</html>

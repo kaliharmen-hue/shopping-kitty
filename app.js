@@ -52,6 +52,7 @@ const els = {
   totalShopping: document.querySelector("#totalShopping"),
   overKitty: document.querySelector("#overKitty"),
   settleUp: document.querySelector("#settleUp"),
+  kittyPaid: document.querySelector("#kittyPaid"),
   kaliPaid: document.querySelector("#kaliPaid"),
   keithPaid: document.querySelector("#keithPaid"),
 };
@@ -154,24 +155,22 @@ function activeData() {
 function totalsFor(monthKey) {
   const month = state.months[monthKey];
   const contributions = people.reduce((sum, person) => sum + parseAmount(month.contributions[person]), 0);
-  const spendByPerson = { Kali: 0, Keith: 0 };
-  const extraByPerson = { Kali: 0, Keith: 0 };
-  let kittyRemaining = contributions;
+  const spendByPerson = { Kitty: 0, Kali: 0, Keith: 0 };
 
   for (const entry of month.entries) {
     const amount = Number(entry.amount) || 0;
-    spendByPerson[entry.paidBy] += amount;
-
-    if (kittyRemaining >= amount) {
-      kittyRemaining -= amount;
-    } else {
-      extraByPerson[entry.paidBy] += amount - Math.max(0, kittyRemaining);
-      kittyRemaining = 0;
-    }
+    spendByPerson[entry.paidBy] = (spendByPerson[entry.paidBy] || 0) + amount;
   }
 
-  const shopping = spendByPerson.Kali + spendByPerson.Keith;
-  return { contributions, spendByPerson, extraByPerson, shopping, balance: contributions - shopping };
+  const shopping = spendByPerson.Kitty + spendByPerson.Kali + spendByPerson.Keith;
+  const extraByPerson = { Kali: spendByPerson.Kali, Keith: spendByPerson.Keith };
+  return {
+    contributions,
+    spendByPerson,
+    extraByPerson,
+    shopping,
+    balance: contributions - spendByPerson.Kitty,
+  };
 }
 
 function renderMonthOptions() {
@@ -196,8 +195,9 @@ function renderSummary() {
   els.totalContributions.textContent = money(totals.contributions);
   els.totalShopping.textContent = money(totals.shopping);
   els.overKitty.textContent = money(Math.max(0, -totals.balance));
-  els.kaliPaid.textContent = money(totals.spendByPerson.Kali);
-  els.keithPaid.textContent = money(totals.spendByPerson.Keith);
+  els.kittyPaid.textContent = money(totals.spendByPerson.Kitty);
+  els.kaliPaid.textContent = money(totals.extraByPerson.Kali);
+  els.keithPaid.textContent = money(totals.extraByPerson.Keith);
   els.kittyBalance.textContent = money(Math.abs(totals.balance));
   els.kittyBalance.classList.toggle("negative", totals.balance < 0);
   els.kittyBalance.classList.toggle("positive", totals.balance >= 0);
@@ -205,7 +205,7 @@ function renderSummary() {
   els.balanceHelp.textContent =
     totals.balance >= 0
       ? "This is what remains from the start-of-month kitty."
-      : "The kitty is gone; this is the extra shopping spend.";
+      : "The kitty has been overspent. Add extra shops under Kali or Keith.";
 
   els.settleUp.textContent =
     totals.extraByPerson.Kali || totals.extraByPerson.Keith

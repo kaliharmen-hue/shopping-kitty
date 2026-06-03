@@ -245,6 +245,7 @@ select:focus {
 .split-panel {
   background: #17312f;
   color: #fff;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .section-title {

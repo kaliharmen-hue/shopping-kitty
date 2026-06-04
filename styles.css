@@ -17,6 +17,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -102,6 +106,25 @@ main {
   text-align: center;
 }
 
+.view-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.view-tabs button {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--brand-dark);
+}
+
+.view-tabs button.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #ffffff;
+}
+
 .summary-band {
   display: grid;
   gap: 12px;
@@ -162,7 +185,8 @@ main {
 .contributions,
 .quick-add,
 .split-panel,
-.entries-section {
+.entries-section,
+.shopping-list {
   margin-top: 14px;
   padding: 14px;
   background: var(--panel);
@@ -221,7 +245,8 @@ select:focus {
 
 .contributions,
 .quick-add,
-.entries-section {
+.entries-section,
+.shopping-list {
   display: grid;
   gap: 12px;
 }
@@ -238,6 +263,19 @@ select:focus {
 }
 
 .entry-form button {
+  background: var(--warm);
+  color: #241b0c;
+}
+
+.list-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.list-form button {
+  min-width: 92px;
   background: var(--warm);
   color: #241b0c;
 }
@@ -268,6 +306,11 @@ select:focus {
   gap: 8px;
 }
 
+.shopping-list-items {
+  display: grid;
+  gap: 8px;
+}
+
 .empty {
   margin: 0;
   padding: 18px;
@@ -286,6 +329,50 @@ select:focus {
   border: 1px solid var(--line);
   border-left: 5px solid var(--brand);
   background: #fff;
+}
+
+.list-item {
+  display: grid;
+  grid-template-columns: 1fr 42px;
+  gap: 10px;
+  align-items: center;
+  min-height: 58px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--brand);
+  background: #fff;
+}
+
+.list-item label {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.list-item input {
+  width: 22px;
+  min-height: 22px;
+  padding: 0;
+}
+
+.list-item span {
+  overflow-wrap: anywhere;
+}
+
+.list-item.done span {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.list-item button {
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  background: #f8e9e7;
+  color: var(--danger);
+  font-size: 1.5rem;
 }
 
 .entry div {

@@ -17,8 +17,13 @@ const monthStarts = [
 ];
 
 const defaultState = {
+  activeView: "tracker",
   activeMonth: "2026-06",
   deletedEntryIds: [],
+  deletedListItemIds: [],
+  shoppingList: {
+    items: [],
+  },
   months: Object.fromEntries(
     monthStarts.map(([key]) => [
       key,
@@ -33,6 +38,9 @@ const defaultState = {
 
 const els = {
   saveState: document.querySelector("#saveState"),
+  viewButtons: document.querySelectorAll("[data-view-button]"),
+  trackerViews: document.querySelectorAll(".tracker-view"),
+  listView: document.querySelector(".list-view"),
   monthSelect: document.querySelector("#monthSelect"),
   kaliContribution: document.querySelector("#kaliContribution"),
   keithContribution: document.querySelector("#keithContribution"),
@@ -45,6 +53,11 @@ const els = {
   clearMonthBtn: document.querySelector("#clearMonthBtn"),
   entriesList: document.querySelector("#entriesList"),
   template: document.querySelector("#entryTemplate"),
+  listItemTemplate: document.querySelector("#listItemTemplate"),
+  listItemInput: document.querySelector("#listItemInput"),
+  addListItemBtn: document.querySelector("#addListItemBtn"),
+  shoppingListItems: document.querySelector("#shoppingListItems"),
+  listCount: document.querySelector("#listCount"),
   kittyBalance: document.querySelector("#kittyBalance"),
   balanceLabel: document.querySelector("#balanceLabel"),
   balanceHelp: document.querySelector("#balanceHelp"),
@@ -62,6 +75,7 @@ let saveTimer = null;
 let syncTimer = null;
 let firebase = null;
 let activeUnsubscribers = [];
+let listUnsubscriber = null;
 let isApplyingRemote = false;
 
 function clone(value) {
@@ -75,8 +89,14 @@ function loadState() {
   try {
     const parsed = JSON.parse(saved);
     const merged = clone(defaultState);
+    merged.activeView = parsed.activeView || merged.activeView;
     merged.activeMonth = parsed.activeMonth || merged.activeMonth;
     merged.deletedEntryIds = parsed.deletedEntryIds || [];
+    merged.deletedListItemIds = parsed.deletedListItemIds || [];
+    merged.shoppingList.items = (parsed.shoppingList?.items || []).map((item) => ({
+      ...item,
+      syncPending: Boolean(item.syncPending),
+    }));
     for (const [key] of monthStarts) {
       merged.months[key] = {
         ...merged.months[key],
@@ -119,9 +139,16 @@ function saveState() {
 function updateSyncLabel() {
   const month = activeData();
   const pendingEntries = month.entries.some((entry) => entry.syncPending);
+  const pendingListItems = state.shoppingList.items.some((item) => item.syncPending);
   if (!firebase) {
     setSaveState("Saved local");
-  } else if (pendingEntries || month.contributionSyncPending || state.deletedEntryIds.length) {
+  } else if (
+    pendingEntries ||
+    pendingListItems ||
+    month.contributionSyncPending ||
+    state.deletedEntryIds.length ||
+    state.deletedListItemIds.length
+  ) {
     setSaveState("Syncing");
   } else {
     setSaveState("Synced");
@@ -254,11 +281,92 @@ function renderEntries() {
   });
 }
 
+function renderView() {
+  const activeView = state.activeView === "list" ? "list" : "tracker";
+  els.viewButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.viewButton === activeView);
+  });
+  els.trackerViews.forEach((section) => {
+    section.hidden = activeView !== "tracker";
+  });
+  els.listView.hidden = activeView !== "list";
+}
+
+function renderShoppingList() {
+  const items = [...state.shoppingList.items].sort((a, b) => {
+    if (Boolean(a.done) !== Boolean(b.done)) return a.done ? 1 : -1;
+    return String(a.createdAt).localeCompare(String(b.createdAt));
+  });
+  const openCount = items.filter((item) => !item.done).length;
+  els.listCount.textContent = `${openCount} ${openCount === 1 ? "item" : "items"}`;
+  els.shoppingListItems.innerHTML = "";
+
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No shopping list items yet.";
+    els.shoppingListItems.append(empty);
+    return;
+  }
+
+  for (const item of items) {
+    const node = els.listItemTemplate.content.firstElementChild.cloneNode(true);
+    node.classList.toggle("done", Boolean(item.done));
+    const checkbox = node.querySelector('[data-action="toggle"]');
+    checkbox.checked = Boolean(item.done);
+    node.querySelector('[data-field="text"]').textContent = item.text;
+    checkbox.addEventListener("change", () => toggleListItem(item.id, checkbox.checked));
+    node.querySelector('[data-action="delete"]').addEventListener("click", () => deleteListItem(item.id));
+    els.shoppingListItems.append(node);
+  }
+}
+
 function render() {
+  renderView();
   renderMonthOptions();
   renderInputs();
   renderSummary();
   renderEntries();
+  renderShoppingList();
+}
+
+function addListItem() {
+  const text = els.listItemInput.value.trim();
+  if (!text) {
+    els.listItemInput.focus();
+    return;
+  }
+
+  state.shoppingList.items.push({
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    text,
+    done: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    syncPending: true,
+  });
+
+  els.listItemInput.value = "";
+  saveState();
+  render();
+  els.listItemInput.focus();
+}
+
+function toggleListItem(itemId, done) {
+  const item = state.shoppingList.items.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  item.done = done;
+  item.updatedAt = new Date().toISOString();
+  item.syncPending = true;
+  saveState();
+  render();
+}
+
+function deleteListItem(itemId) {
+  state.shoppingList.items = state.shoppingList.items.filter((item) => item.id !== itemId);
+  if (!state.deletedListItemIds.includes(itemId)) state.deletedListItemIds.push(itemId);
+  saveState();
+  render();
 }
 
 function addEntry() {
@@ -355,6 +463,20 @@ async function pushPendingSync() {
   const householdRef = api.doc(db, "households", HOUSEHOLD_ID);
 
   try {
+    for (const item of state.shoppingList.items.filter((candidate) => candidate.syncPending)) {
+      const { syncPending, ...remoteItem } = item;
+      await api.setDoc(api.doc(householdRef, "shoppingList", "items", "items", item.id), {
+        ...remoteItem,
+        updatedAt: api.serverTimestamp(),
+      });
+      item.syncPending = false;
+    }
+
+    for (const itemId of [...state.deletedListItemIds]) {
+      await api.deleteDoc(api.doc(householdRef, "shoppingList", "items", "items", itemId)).catch(() => {});
+      state.deletedListItemIds = state.deletedListItemIds.filter((id) => id !== itemId);
+    }
+
     for (const [monthKey, month] of Object.entries(state.months)) {
       if (month.contributionSyncPending) {
         await api.setDoc(
@@ -388,6 +510,33 @@ async function pushPendingSync() {
   } catch {
     setSaveState("Saved local");
   }
+}
+
+function subscribeToShoppingList() {
+  if (!firebase) return;
+  if (listUnsubscriber) listUnsubscriber();
+
+  const { db, api } = firebase;
+  const householdRef = api.doc(db, "households", HOUSEHOLD_ID);
+  const listRef = api.collection(householdRef, "shoppingList", "items", "items");
+
+  listUnsubscriber = api.onSnapshot(api.query(listRef, api.orderBy("createdAt", "asc")), (snapshot) => {
+    const remoteItems = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+      syncPending: false,
+    }));
+    const localPending = state.shoppingList.items.filter((item) => item.syncPending);
+    const deleted = new Set(state.deletedListItemIds);
+    isApplyingRemote = true;
+    state.shoppingList.items = [
+      ...remoteItems.filter((item) => !deleted.has(item.id)),
+      ...localPending.filter((item) => !remoteItems.some((remote) => remote.id === item.id)),
+    ];
+    saveLocalNow();
+    render();
+    isApplyingRemote = false;
+  });
 }
 
 function subscribeToActiveMonth() {
@@ -454,6 +603,7 @@ async function initFirebaseSync() {
     await firestoreModule.enableIndexedDbPersistence(db).catch(() => {});
     firebase = { db, api: firestoreModule };
     setSaveState("Syncing");
+    subscribeToShoppingList();
     subscribeToActiveMonth();
     queueSync();
   } catch {
@@ -466,6 +616,14 @@ els.monthSelect.addEventListener("change", () => {
   saveState();
   render();
   subscribeToActiveMonth();
+});
+
+els.viewButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.activeView = button.dataset.viewButton === "list" ? "list" : "tracker";
+    saveState();
+    render();
+  });
 });
 
 els.kaliContribution.addEventListener("input", () => {
@@ -483,11 +641,15 @@ els.keithContribution.addEventListener("input", () => {
 });
 
 els.addEntryBtn.addEventListener("click", addEntry);
+els.addListItemBtn.addEventListener("click", addListItem);
 els.amountInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") addEntry();
 });
 els.noteInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") addEntry();
+});
+els.listItemInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") addListItem();
 });
 els.exportBtn.addEventListener("click", exportBackup);
 els.importInput.addEventListener("change", (event) => importBackup(event.target.files[0]));

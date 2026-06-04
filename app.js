@@ -23,6 +23,11 @@ const defaultState = {
   deletedListItemIds: [],
   shoppingList: {
     items: [],
+    savedItems: {
+      supermarkets: [],
+      costco: [],
+    },
+    savedItemsSyncPending: false,
   },
   months: Object.fromEntries(
     monthStarts.map(([key]) => [
@@ -54,9 +59,12 @@ const els = {
   entriesList: document.querySelector("#entriesList"),
   template: document.querySelector("#entryTemplate"),
   listItemTemplate: document.querySelector("#listItemTemplate"),
+  listTypeSelect: document.querySelector("#listTypeSelect"),
   listItemInput: document.querySelector("#listItemInput"),
+  rememberedItems: document.querySelector("#rememberedItems"),
   addListItemBtn: document.querySelector("#addListItemBtn"),
-  shoppingListItems: document.querySelector("#shoppingListItems"),
+  supermarketListItems: document.querySelector("#supermarketListItems"),
+  costcoListItems: document.querySelector("#costcoListItems"),
   listCount: document.querySelector("#listCount"),
   kittyBalance: document.querySelector("#kittyBalance"),
   balanceLabel: document.querySelector("#balanceLabel"),
@@ -94,9 +102,16 @@ function loadState() {
     merged.deletedEntryIds = parsed.deletedEntryIds || [];
     merged.deletedListItemIds = parsed.deletedListItemIds || [];
     merged.shoppingList.items = (parsed.shoppingList?.items || []).map((item) => ({
+      listType: "supermarkets",
       ...item,
+      listType: item.listType || "supermarkets",
       syncPending: Boolean(item.syncPending),
     }));
+    merged.shoppingList.savedItems = {
+      supermarkets: parsed.shoppingList?.savedItems?.supermarkets || [],
+      costco: parsed.shoppingList?.savedItems?.costco || [],
+    };
+    merged.shoppingList.savedItemsSyncPending = Boolean(parsed.shoppingList?.savedItemsSyncPending);
     for (const [key] of monthStarts) {
       merged.months[key] = {
         ...merged.months[key],
@@ -145,6 +160,7 @@ function updateSyncLabel() {
   } else if (
     pendingEntries ||
     pendingListItems ||
+    state.shoppingList.savedItemsSyncPending ||
     month.contributionSyncPending ||
     state.deletedEntryIds.length ||
     state.deletedListItemIds.length
@@ -299,13 +315,47 @@ function renderShoppingList() {
   });
   const openCount = items.filter((item) => !item.done).length;
   els.listCount.textContent = `${openCount} ${openCount === 1 ? "item" : "items"}`;
-  els.shoppingListItems.innerHTML = "";
+  els.supermarketListItems.innerHTML = "";
+  els.costcoListItems.innerHTML = "";
+  renderRememberedItems();
 
   if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "No shopping list items yet.";
-    els.shoppingListItems.append(empty);
+    els.supermarketListItems.append(emptyListMessage("No supermarket items yet."));
+    els.costcoListItems.append(emptyListMessage("No Costco items yet."));
+    return;
+  }
+
+  const groups = {
+    supermarkets: items.filter((item) => (item.listType || "supermarkets") === "supermarkets"),
+    costco: items.filter((item) => item.listType === "costco"),
+  };
+
+  renderListGroup(els.supermarketListItems, groups.supermarkets, "No supermarket items yet.");
+  renderListGroup(els.costcoListItems, groups.costco, "No Costco items yet.");
+}
+
+function emptyListMessage(text) {
+  const empty = document.createElement("p");
+  empty.className = "empty";
+  empty.textContent = text;
+  return empty;
+}
+
+function renderRememberedItems() {
+  const listType = els.listTypeSelect.value === "costco" ? "costco" : "supermarkets";
+  const remembered = state.shoppingList.savedItems[listType].filter(Boolean);
+  const unique = [...new Set(remembered)].sort((a, b) => a.localeCompare(b));
+  els.rememberedItems.innerHTML = "";
+  for (const item of unique) {
+    const option = document.createElement("option");
+    option.value = item;
+    els.rememberedItems.append(option);
+  }
+}
+
+function renderListGroup(container, items, emptyText) {
+  if (!items.length) {
+    container.append(emptyListMessage(emptyText));
     return;
   }
 
@@ -317,7 +367,7 @@ function renderShoppingList() {
     node.querySelector('[data-field="text"]').textContent = item.text;
     checkbox.addEventListener("change", () => toggleListItem(item.id, checkbox.checked));
     node.querySelector('[data-action="delete"]').addEventListener("click", () => deleteListItem(item.id));
-    els.shoppingListItems.append(node);
+    container.append(node);
   }
 }
 
@@ -332,14 +382,17 @@ function render() {
 
 function addListItem() {
   const text = els.listItemInput.value.trim();
+  const listType = els.listTypeSelect.value === "costco" ? "costco" : "supermarkets";
   if (!text) {
     els.listItemInput.focus();
     return;
   }
 
+  rememberListItem(text, listType);
   state.shoppingList.items.push({
     id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
     text,
+    listType,
     done: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -355,6 +408,7 @@ function addListItem() {
 function toggleListItem(itemId, done) {
   const item = state.shoppingList.items.find((candidate) => candidate.id === itemId);
   if (!item) return;
+  rememberListItem(item.text, item.listType || "supermarkets");
   item.done = done;
   item.updatedAt = new Date().toISOString();
   item.syncPending = true;
@@ -363,10 +417,23 @@ function toggleListItem(itemId, done) {
 }
 
 function deleteListItem(itemId) {
+  const item = state.shoppingList.items.find((candidate) => candidate.id === itemId);
+  if (item) rememberListItem(item.text, item.listType || "supermarkets");
   state.shoppingList.items = state.shoppingList.items.filter((item) => item.id !== itemId);
   if (!state.deletedListItemIds.includes(itemId)) state.deletedListItemIds.push(itemId);
   saveState();
   render();
+}
+
+function rememberListItem(text, listType) {
+  const clean = text.trim();
+  if (!clean) return;
+  const type = listType === "costco" ? "costco" : "supermarkets";
+  const existing = state.shoppingList.savedItems[type];
+  if (existing.some((item) => item.toLowerCase() === clean.toLowerCase())) return;
+  existing.push(clean);
+  existing.sort((a, b) => a.localeCompare(b));
+  state.shoppingList.savedItemsSyncPending = true;
 }
 
 function addEntry() {
@@ -463,6 +530,18 @@ async function pushPendingSync() {
   const householdRef = api.doc(db, "households", HOUSEHOLD_ID);
 
   try {
+    if (state.shoppingList.savedItemsSyncPending) {
+      await api.setDoc(
+        api.doc(householdRef, "shoppingListMeta", "catalog"),
+        {
+          savedItems: state.shoppingList.savedItems,
+          updatedAt: api.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      state.shoppingList.savedItemsSyncPending = false;
+    }
+
     for (const item of state.shoppingList.items.filter((candidate) => candidate.syncPending)) {
       const { syncPending, ...remoteItem } = item;
       await api.setDoc(api.doc(householdRef, "shoppingList", "items", "items", item.id), {
@@ -519,11 +598,28 @@ function subscribeToShoppingList() {
   const { db, api } = firebase;
   const householdRef = api.doc(db, "households", HOUSEHOLD_ID);
   const listRef = api.collection(householdRef, "shoppingList", "items", "items");
+  const catalogRef = api.doc(householdRef, "shoppingListMeta", "catalog");
+
+  api.onSnapshot(catalogRef, (snapshot) => {
+    if (!snapshot.exists() || state.shoppingList.savedItemsSyncPending) return;
+    const data = snapshot.data();
+    if (!data.savedItems) return;
+    isApplyingRemote = true;
+    state.shoppingList.savedItems = {
+      supermarkets: data.savedItems.supermarkets || [],
+      costco: data.savedItems.costco || [],
+    };
+    saveLocalNow();
+    render();
+    isApplyingRemote = false;
+  });
 
   listUnsubscriber = api.onSnapshot(api.query(listRef, api.orderBy("createdAt", "asc")), (snapshot) => {
     const remoteItems = snapshot.docs.map((docSnap) => ({
       id: docSnap.id,
+      listType: "supermarkets",
       ...docSnap.data(),
+      listType: docSnap.data().listType || "supermarkets",
       syncPending: false,
     }));
     const localPending = state.shoppingList.items.filter((item) => item.syncPending);
@@ -642,6 +738,7 @@ els.keithContribution.addEventListener("input", () => {
 
 els.addEntryBtn.addEventListener("click", addEntry);
 els.addListItemBtn.addEventListener("click", addListItem);
+els.listTypeSelect.addEventListener("change", renderRememberedItems);
 els.amountInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") addEntry();
 });
